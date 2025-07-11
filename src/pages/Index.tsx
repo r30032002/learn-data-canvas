@@ -6,15 +6,33 @@ import { Dashboard } from '@/components/Dashboard';
 import { StudentList } from '@/components/StudentList';
 import { StudentDetail } from '@/components/StudentDetail';
 import { AddStudent } from '@/components/AddStudent';
+import { ExamManager } from '@/components/ExamManager';
+import { ExamCSVUpload } from '@/components/ExamCSVUpload';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GraduationCap, BarChart3, Users, FileSpreadsheet, UserPlus } from 'lucide-react';
+import { GraduationCap, BarChart3, Users, FileSpreadsheet, UserPlus, Calendar } from 'lucide-react';
 
-type ViewMode = 'upload' | 'preview' | 'dashboard' | 'students' | 'student-detail' | 'add-student';
+type ViewMode = 'upload' | 'preview' | 'dashboard' | 'students' | 'student-detail' | 'add-student' | 'exam-manager' | 'exam-upload';
+
+interface ExamSet {
+  id: string;
+  name: string;
+  date: string;
+  description: string;
+  csvUploads: {
+    verbal?: any[];
+    numerical?: any[];
+    maths?: any[];
+    reading?: any[];
+  };
+  studentCount: number;
+}
 
 const Index = () => {
   const [studentData, setStudentData] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<ViewMode>('upload');
+  const [activeTab, setActiveTab] = useState<ViewMode>('exam-manager');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
+  const [examSets, setExamSets] = useState<ExamSet[]>([]);
+  const [selectedExamSet, setSelectedExamSet] = useState<ExamSet | null>(null);
 
   const handleDataUpload = (data: any[]) => {
     setStudentData(data);
@@ -29,12 +47,91 @@ const Index = () => {
   const resetData = () => {
     setStudentData([]);
     setSelectedStudent(null);
-    setActiveTab('upload');
+    setActiveTab('exam-manager');
   };
 
   const handleStudentSelect = (student: any) => {
     setSelectedStudent(student);
     setActiveTab('student-detail');
+  };
+
+  const handleCreateExam = (examData: Omit<ExamSet, 'id' | 'csvUploads' | 'studentCount'>) => {
+    const newExam: ExamSet = {
+      ...examData,
+      id: Date.now().toString(),
+      csvUploads: {},
+      studentCount: 0
+    };
+    setExamSets(prev => [...prev, newExam]);
+  };
+
+  const handleSelectExam = (examSet: ExamSet) => {
+    setSelectedExamSet(examSet);
+    setActiveTab('exam-upload');
+  };
+
+  const handleExamUploadComplete = (examId: string, subject: string, data: any[]) => {
+    setExamSets(prev => prev.map(exam => {
+      if (exam.id === examId) {
+        const updatedExam = {
+          ...exam,
+          csvUploads: {
+            ...exam.csvUploads,
+            [subject]: data
+          }
+        };
+        
+        // Calculate total unique students
+        const allStudentIds = new Set();
+        Object.values(updatedExam.csvUploads).forEach(subjectData => {
+          if (subjectData) {
+            subjectData.forEach(row => {
+              const studentId = row.student_id || row.Student_ID || row.id || row.ID;
+              if (studentId) allStudentIds.add(studentId);
+            });
+          }
+        });
+        updatedExam.studentCount = allStudentIds.size;
+        
+        return updatedExam;
+      }
+      return exam;
+    }));
+
+    // Update selectedExamSet if it's the one being updated
+    if (selectedExamSet?.id === examId) {
+      setSelectedExamSet(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          csvUploads: {
+            ...prev.csvUploads,
+            [subject]: data
+          },
+          studentCount: prev.studentCount // Will be updated by the above logic
+        };
+      });
+    }
+  };
+
+  const handleViewExamDashboard = () => {
+    if (selectedExamSet) {
+      // Combine all CSV data from the exam set
+      const combinedData: any[] = [];
+      Object.entries(selectedExamSet.csvUploads).forEach(([subject, data]) => {
+        if (data) {
+          data.forEach(row => {
+            combinedData.push({
+              ...row,
+              subject: subject,
+              examSet: selectedExamSet.name
+            });
+          });
+        }
+      });
+      setStudentData(combinedData);
+      setActiveTab('dashboard');
+    }
   };
 
   return (
@@ -51,17 +148,19 @@ const Index = () => {
               </div>
             </div>
             
-            {studentData.length > 0 && (
+            {(studentData.length > 0 || examSets.length > 0) && (
               <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2 text-sm text-gray-600">
-                  <Users className="h-4 w-4" />
-                  {studentData.length} Students
-                </div>
+                {studentData.length > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-gray-600">
+                    <Users className="h-4 w-4" />
+                    {studentData.length} Records
+                  </div>
+                )}
                 <button
                   onClick={resetData}
                   className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                 >
-                  Upload New Data
+                  Back to Exam Sets
                 </button>
               </div>
             )}
@@ -70,10 +169,26 @@ const Index = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {studentData.length === 0 ? (
-          /* Welcome & Upload State */
+        {activeTab === 'exam-manager' && (
+          <ExamManager
+            examSets={examSets}
+            onCreateExam={handleCreateExam}
+            onSelectExam={handleSelectExam}
+          />
+        )}
+
+        {activeTab === 'exam-upload' && selectedExamSet && (
+          <ExamCSVUpload
+            examSet={selectedExamSet}
+            onUploadComplete={handleExamUploadComplete}
+            onBack={() => setActiveTab('exam-manager')}
+            onViewDashboard={handleViewExamDashboard}
+          />
+        )}
+
+        {studentData.length === 0 && activeTab === 'upload' && (
+          /* Legacy upload interface - keeping for backward compatibility */
           <div className="space-y-8">
-            {/* Welcome Section */}
             <div className="text-center space-y-4">
               <div className="mx-auto w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center">
                 <BarChart3 className="h-8 w-8 text-blue-600" />
@@ -87,7 +202,6 @@ const Index = () => {
               </p>
             </div>
 
-            {/* Features */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
               <Card className="text-center">
                 <CardHeader>
@@ -126,11 +240,11 @@ const Index = () => {
               </Card>
             </div>
 
-            {/* Upload Component */}
             <CSVUpload onDataUpload={handleDataUpload} />
           </div>
-        ) : (
-          /* Data Loaded State */
+        )}
+
+        {studentData.length > 0 && (
           <div className="space-y-6">
             {/* Navigation Tabs */}
             <div className="border-b border-gray-200">
