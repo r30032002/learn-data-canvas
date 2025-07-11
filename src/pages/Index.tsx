@@ -3,21 +3,38 @@ import React, { useState } from 'react';
 import { CSVUpload } from '@/components/CSVUpload';
 import { DataTable } from '@/components/DataTable';
 import { Dashboard } from '@/components/Dashboard';
+import { StudentList } from '@/components/StudentList';
+import { StudentDetail } from '@/components/StudentDetail';
+import { AddStudent } from '@/components/AddStudent';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { GraduationCap, BarChart3, Users, FileSpreadsheet } from 'lucide-react';
+import { GraduationCap, BarChart3, Users, FileSpreadsheet, UserPlus } from 'lucide-react';
+
+type ViewMode = 'upload' | 'preview' | 'dashboard' | 'students' | 'student-detail' | 'add-student';
 
 const Index = () => {
   const [studentData, setStudentData] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<'upload' | 'preview' | 'dashboard'>('upload');
+  const [activeTab, setActiveTab] = useState<ViewMode>('upload');
+  const [selectedStudent, setSelectedStudent] = useState<any>(null);
 
   const handleDataUpload = (data: any[]) => {
     setStudentData(data);
     setActiveTab('dashboard');
   };
 
+  const handleAddStudent = (newStudent: any) => {
+    setStudentData(prev => [...prev, newStudent]);
+    setActiveTab('students');
+  };
+
   const resetData = () => {
     setStudentData([]);
+    setSelectedStudent(null);
     setActiveTab('upload');
+  };
+
+  const handleStudentSelect = (student: any) => {
+    setSelectedStudent(student);
+    setActiveTab('student-detail');
   };
 
   return (
@@ -99,11 +116,11 @@ const Index = () => {
               <Card className="text-center">
                 <CardHeader>
                   <Users className="h-8 w-8 text-purple-600 mx-auto" />
-                  <CardTitle className="text-lg">Student Insights</CardTitle>
+                  <CardTitle className="text-lg">Student Management</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <CardDescription>
-                    Identify top performers and students needing additional support with detailed breakdowns.
+                    View individual student profiles, track performance history, and add new students to your class.
                   </CardDescription>
                 </CardContent>
               </Card>
@@ -130,6 +147,17 @@ const Index = () => {
                   Analytics Dashboard
                 </button>
                 <button
+                  onClick={() => setActiveTab('students')}
+                  className={`py-2 px-1 border-b-2 font-medium text-sm ${
+                    activeTab === 'students' || activeTab === 'student-detail'
+                      ? 'border-blue-500 text-blue-600'
+                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  }`}
+                >
+                  <Users className="h-4 w-4 inline mr-2" />
+                  Students
+                </button>
+                <button
                   onClick={() => setActiveTab('preview')}
                   className={`py-2 px-1 border-b-2 font-medium text-sm ${
                     activeTab === 'preview'
@@ -145,6 +173,26 @@ const Index = () => {
 
             {/* Tab Content */}
             {activeTab === 'dashboard' && <Dashboard data={studentData} />}
+            {activeTab === 'students' && (
+              <StudentList 
+                data={studentData} 
+                onStudentSelect={handleStudentSelect}
+                onAddStudent={() => setActiveTab('add-student')}
+              />
+            )}
+            {activeTab === 'student-detail' && selectedStudent && (
+              <StudentDetail 
+                student={selectedStudent} 
+                onBack={() => setActiveTab('students')} 
+              />
+            )}
+            {activeTab === 'add-student' && (
+              <AddStudent 
+                onAddStudent={handleAddStudent}
+                onCancel={() => setActiveTab('students')}
+                existingData={studentData}
+              />
+            )}
             {activeTab === 'preview' && <DataTable data={studentData} />}
           </div>
         )}
