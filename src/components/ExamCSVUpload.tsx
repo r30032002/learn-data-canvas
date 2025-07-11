@@ -54,6 +54,34 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
   );
   const [showSettings, setShowSettings] = useState(false);
 
+  const extractTotalPointFromCSV = (csvText: string): number | null => {
+    try {
+      const lines = csvText.trim().split('\n');
+      if (lines.length < 2) return null;
+      
+      // Parse the second row to find Total Point
+      const secondRow = lines[1];
+      const values = secondRow.split('\t').map(v => v.trim()); // Try tab first
+      
+      // If tab split doesn't work well, try comma
+      const finalValues = values.length < 4 ? secondRow.split(',').map(v => v.trim()) : values;
+      
+      // Look for the Total Point value (should be around index 3-4 based on the format)
+      for (let i = 0; i < finalValues.length; i++) {
+        const value = parseInt(finalValues[i]);
+        if (!isNaN(value) && value > 0 && value <= 100) { // Reasonable range for question count
+          console.log(`Extracted Total Point: ${value} from position ${i}`);
+          return value;
+        }
+      }
+      
+      return null;
+    } catch (error) {
+      console.error('Error extracting Total Point:', error);
+      return null;
+    }
+  };
+
   const parseCSV = (csvText: string) => {
     const lines = csvText.trim().split('\n');
     
@@ -62,10 +90,14 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
       throw new Error('CSV file must have at least 4 rows (including headers)');
     }
     
-    const headers = lines[2].split(',').map(h => h.trim().replace(/"/g, ''));
+    // Try to detect if it's tab or comma separated
+    const headerRow = lines[2];
+    const delimiter = headerRow.includes('\t') ? '\t' : ',';
+    
+    const headers = headerRow.split(delimiter).map(h => h.trim().replace(/"/g, ''));
     
     const data = lines.slice(3).map(line => {
-      const values = line.split(',').map(v => v.trim().replace(/"/g, ''));
+      const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
       const obj: any = {};
       headers.forEach((header, index) => {
         obj[header] = values[index] || '';
@@ -142,10 +174,47 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
       }
       
       const text = await file.text();
+      
+      // Extract total questions from CSV and update the question count
+      const extractedTotal = extractTotalPointFromCSV(text);
+      if (extractedTotal !== null) {
+        console.log(`Auto-detected ${extractedTotal} questions for ${subject}`);
+        setQuestionCounts(prev => ({
+          ...prev,
+          [subject]: extractedTotal
+        }));
+      }
+      
       const parsedData = parseCSV(text);
       validateData(parsedData);
       
-      const processedData = processStudentData(parsedData, subject);
+      // Process with the updated question count (either extracted or current)
+      const currentQuestionCount = extractedTotal !== null ? extractedTotal : questionCounts[subject];
+      const processedData = parsedData.map(row => {
+        // Extract student name from various possible columns
+        const firstName = row['First Name'] || row['firstname'] || '';
+        const lastName = row['Last Name'] || row['lastname'] || '';
+        const middleName = row['Middle Name'] || row['middlename'] || '';
+        
+        const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
+        
+        // Extract score
+        const rawScore = parseInt(row['Score'] || row['score'] || '0');
+        const percentage = currentQuestionCount > 0 ? (rawScore / currentQuestionCount) * 100 : 0;
+        
+        return {
+          name: fullName || row['Username'] || row['username'] || 'Unknown',
+          student_id: row['SIS ID'] || row['Student Number'] || row['Username'] || row['username'] || `${subject}_${Math.random().toString(36).substr(2, 9)}`,
+          score: rawScore,
+          total_questions: currentQuestionCount,
+          percentage: Math.round(percentage * 100) / 100,
+          subject: subject,
+          username: row['Username'] || row['username'] || '',
+          // Keep original data for reference
+          ...row
+        };
+      });
+      
       onUploadComplete(examSet.id, subject, processedData);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to process file');
@@ -208,7 +277,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
           <CardHeader>
             <CardTitle className="text-lg">Question Count Configuration</CardTitle>
             <CardDescription>
-              Set the total number of questions for each subject to calculate accurate percentages
+              The system automatically detects question counts from CSV files. You can manually adjust them here if needed.
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -261,6 +330,9 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
                     <CardDescription>{subject.description}</CardDescription>
                     <p className="text-xs text-gray-500 mt-1">
                       Total Questions: {questionCounts[subject.key]}
+                      {questionCounts[subject.key] !== SUBJECTS.find(s => s.key === subject.key)!.defaultQuestions && (
+                        <span className="text-blue-600"> (auto-detected)</span>
+                      )}
                     </p>
                   </div>
                 </div>
@@ -297,7 +369,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
                     <div className="space-y-2">
                       <p className="font-medium">Upload {subject.label} CSV</p>
                       <p className="text-xs text-gray-500">
-                        Format: Skip first 2 rows, headers in row 3
+                        Format: Skip first 2 rows, headers in row 3. Total questions auto-detected.
                       </p>
                       <input
                         type="file"
