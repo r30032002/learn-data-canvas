@@ -66,7 +66,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
       // If tab split doesn't work well, try comma
       const finalValues = values.length < 4 ? secondRow.split(',').map(v => v.trim()) : values;
       
-      // Look for the Total Point value (should be around index 3-4 based on the format)
+      // Look for the Total Point value (should be around index 3 based on the format)
       for (let i = 0; i < finalValues.length; i++) {
         const value = parseInt(finalValues[i]);
         if (!isNaN(value) && value > 0 && value <= 100) { // Reasonable range for question count
@@ -87,21 +87,24 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
     
     // Skip first two rows and use third row as headers
     if (lines.length < 4) {
-      throw new Error('CSV file must have at least 4 rows (including headers)');
+      throw new Error('CSV file must have at least 4 rows (assignment info, totals, headers, and data)');
     }
     
-    // Try to detect if it's tab or comma separated
+    // Row 3 (index 2) contains the headers
     const headerRow = lines[2];
     const delimiter = headerRow.includes('\t') ? '\t' : ',';
     
     const headers = headerRow.split(delimiter).map(h => h.trim().replace(/"/g, ''));
+    console.log('CSV Headers:', headers);
     
-    const data = lines.slice(3).map(line => {
+    // Rows 4+ (index 3+) contain the student data
+    const data = lines.slice(3).map((line, index) => {
       const values = line.split(delimiter).map(v => v.trim().replace(/"/g, ''));
       const obj: any = {};
-      headers.forEach((header, index) => {
-        obj[header] = values[index] || '';
+      headers.forEach((header, headerIndex) => {
+        obj[header] = values[headerIndex] || '';
       });
+      console.log(`Student row ${index + 1}:`, obj);
       return obj;
     });
     
@@ -115,6 +118,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
     
     const firstRow = data[0];
     const headers = Object.keys(firstRow).map(h => h.toLowerCase());
+    console.log('Available headers:', headers);
     
     // Check for required fields based on the format shown
     const hasName = headers.some(header => 
@@ -135,35 +139,6 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
     return true;
   };
 
-  const processStudentData = (data: any[], subject: SubjectType) => {
-    const totalQuestions = questionCounts[subject];
-    
-    return data.map(row => {
-      // Extract student name from various possible columns
-      const firstName = row['First Name'] || row['firstname'] || '';
-      const lastName = row['Last Name'] || row['lastname'] || '';
-      const middleName = row['Middle Name'] || row['middlename'] || '';
-      
-      const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
-      
-      // Extract score
-      const rawScore = parseInt(row['Score'] || row['score'] || '0');
-      const percentage = totalQuestions > 0 ? (rawScore / totalQuestions) * 100 : 0;
-      
-      return {
-        name: fullName || row['Username'] || row['username'] || 'Unknown',
-        student_id: row['SIS ID'] || row['Student Number'] || row['Username'] || row['username'] || `${subject}_${Math.random().toString(36).substr(2, 9)}`,
-        score: rawScore,
-        total_questions: totalQuestions,
-        percentage: Math.round(percentage * 100) / 100,
-        subject: subject,
-        username: row['Username'] || row['username'] || '',
-        // Keep original data for reference
-        ...row
-      };
-    });
-  };
-
   const handleFileUpload = async (file: File, subject: SubjectType) => {
     setError(null);
     setUploadingSubject(subject);
@@ -174,6 +149,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
       }
       
       const text = await file.text();
+      console.log('Raw CSV text preview:', text.substring(0, 500));
       
       // Extract total questions from CSV and update the question count
       const extractedTotal = extractTotalPointFromCSV(text);
@@ -186,6 +162,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
       }
       
       const parsedData = parseCSV(text);
+      console.log('Parsed data preview:', parsedData.slice(0, 2));
       validateData(parsedData);
       
       // Process with the updated question count (either extracted or current)
@@ -198,9 +175,11 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
         
         const fullName = [firstName, middleName, lastName].filter(Boolean).join(' ').trim();
         
-        // Extract score
-        const rawScore = parseInt(row['Score'] || row['score'] || '0');
+        // Extract score - try different possible column names
+        const rawScore = parseInt(row['Score'] || row['score'] || row['Total Score'] || '0');
         const percentage = currentQuestionCount > 0 ? (rawScore / currentQuestionCount) * 100 : 0;
+        
+        console.log(`Processing student: ${fullName}, Score: ${rawScore}/${currentQuestionCount} = ${percentage.toFixed(2)}%`);
         
         return {
           name: fullName || row['Username'] || row['username'] || 'Unknown',
@@ -215,8 +194,10 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
         };
       });
       
+      console.log('Final processed data:', processedData.slice(0, 2));
       onUploadComplete(examSet.id, subject, processedData);
     } catch (err) {
+      console.error('Upload error:', err);
       setError(err instanceof Error ? err.message : 'Failed to process file');
     } finally {
       setUploadingSubject(null);
@@ -369,7 +350,7 @@ export const ExamCSVUpload: React.FC<ExamCSVUploadProps> = ({
                     <div className="space-y-2">
                       <p className="font-medium">Upload {subject.label} CSV</p>
                       <p className="text-xs text-gray-500">
-                        Format: Skip first 2 rows, headers in row 3. Total questions auto-detected.
+                        Format: Assignment info (row 1), totals (row 2), headers (row 3), data (row 4+)
                       </p>
                       <input
                         type="file"
