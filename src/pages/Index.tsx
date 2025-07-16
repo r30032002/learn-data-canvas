@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { CSVUpload } from '@/components/CSVUpload';
 import { DataTable } from '@/components/DataTable';
@@ -8,10 +7,11 @@ import { StudentDetail } from '@/components/StudentDetail';
 import { AddStudent } from '@/components/AddStudent';
 import { ExamManager } from '@/components/ExamManager';
 import { ExamCSVUpload } from '@/components/ExamCSVUpload';
+import { TeacherDashboard } from '@/components/TeacherDashboard';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { GraduationCap, BarChart3, Users, FileSpreadsheet, UserPlus, Calendar } from 'lucide-react';
 
-type ViewMode = 'upload' | 'preview' | 'dashboard' | 'students' | 'student-detail' | 'add-student' | 'exam-manager' | 'exam-upload';
+type ViewMode = 'teacher-dashboard' | 'upload' | 'preview' | 'dashboard' | 'students' | 'student-detail' | 'add-student' | 'exam-manager' | 'exam-upload';
 
 interface ExamSet {
   id: string;
@@ -29,7 +29,7 @@ interface ExamSet {
 
 const Index = () => {
   const [studentData, setStudentData] = useState<any[]>([]);
-  const [activeTab, setActiveTab] = useState<ViewMode>('exam-manager');
+  const [activeTab, setActiveTab] = useState<ViewMode>('teacher-dashboard');
   const [selectedStudent, setSelectedStudent] = useState<any>(null);
   const [examSets, setExamSets] = useState<ExamSet[]>([]);
   const [selectedExamSet, setSelectedExamSet] = useState<ExamSet | null>(null);
@@ -148,7 +148,7 @@ const Index = () => {
               </div>
             </div>
             
-            {(studentData.length > 0 || examSets.length > 0) && (
+            {(studentData.length > 0 || examSets.length > 0) && activeTab !== 'teacher-dashboard' && (
               <div className="flex items-center gap-4">
                 {studentData.length > 0 && (
                   <div className="flex items-center gap-2 text-sm text-gray-600">
@@ -157,10 +157,15 @@ const Index = () => {
                   </div>
                 )}
                 <button
-                  onClick={resetData}
+                  onClick={() => {
+                    setStudentData([]);
+                    setSelectedStudent(null);
+                    setSelectedExamSet(null);
+                    setActiveTab('teacher-dashboard');
+                  }}
                   className="text-sm text-blue-600 hover:text-blue-800 font-medium"
                 >
-                  Back to Exam Sets
+                  Back to Dashboard
                 </button>
               </div>
             )}
@@ -169,6 +174,14 @@ const Index = () => {
       </header>
 
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {activeTab === 'teacher-dashboard' && (
+          <TeacherDashboard
+            examSets={examSets}
+            onCreateExam={() => setActiveTab('exam-manager')}
+            onManageExams={() => setActiveTab('exam-manager')}
+          />
+        )}
+
         {activeTab === 'exam-manager' && (
           <ExamManager
             examSets={examSets}
